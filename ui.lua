@@ -1,5 +1,7 @@
 local Library = {}
 local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 -- Create main GUI
 Library.ScreenGui = Instance.new("ScreenGui")
@@ -8,9 +10,35 @@ Library.ScreenGui.Parent = game.CoreGui
 Library.MainFrame = Instance.new("Frame")
 Library.MainFrame.Size = UDim2.new(0, 350, 0, 450)
 Library.MainFrame.Position = UDim2.new(0.5, -175, 0.5, -225)
-Library.MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Library.MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Library.MainFrame.BorderSizePixel = 0
 Library.MainFrame.Parent = Library.ScreenGui
+
+-- Enable Dragging
+local dragging, dragInput, dragStart, startPos
+Library.MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = Library.MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+Library.MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        Library.MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
 
 Library.Tabs = {} -- Stores tab buttons
 Library.Sections = {} -- Stores sections
@@ -19,7 +47,7 @@ Library.InfoDisplays = {} -- Stores info panels
 function Library.addTab(name)
     local Tab = Instance.new("TextButton")
     Tab.Size = UDim2.new(0, 110, 0, 35)
-    Tab.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    Tab.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     Tab.TextColor3 = Color3.fromRGB(255, 255, 255)
     Tab.Font = Enum.Font.Gotham
     Tab.TextSize = 14
@@ -50,7 +78,7 @@ function Library.addButton(tab, name, callback)
     local Button = Instance.new("TextButton")
     Button.Size = UDim2.new(1, -10, 0, 40)
     Button.Position = UDim2.new(0, 5, 0, #tab:GetChildren() * 45)
-    Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    Button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
     Button.TextColor3 = Color3.fromRGB(255, 255, 255)
     Button.Font = Enum.Font.Gotham
     Button.TextSize = 14
@@ -64,7 +92,7 @@ function Library.addSection(tab, name)
     local Section = Instance.new("Frame")
     Section.Size = UDim2.new(1, -10, 0, 60)
     Section.Position = UDim2.new(0, 5, 0, #tab:GetChildren() * 65)
-    Section.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Section.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     Section.Parent = tab
     
     local Label = Instance.new("TextLabel")
@@ -82,7 +110,7 @@ end
 function Library.addTooltip(element, text)
     local Tooltip = Instance.new("TextLabel")
     Tooltip.Size = UDim2.new(0, 160, 0, 30)
-    Tooltip.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    Tooltip.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     Tooltip.TextColor3 = Color3.fromRGB(255, 255, 255)
     Tooltip.Font = Enum.Font.Gotham
     Tooltip.TextSize = 14
@@ -103,7 +131,7 @@ function Library.addInfoDisplay()
     local Info = Instance.new("Frame")
     Info.Size = UDim2.new(0, 220, 0, 120)
     Info.Position = UDim2.new(1, -230, 0, 10)
-    Info.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Info.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     Info.Parent = Library.ScreenGui
     
     local Label = Instance.new("TextLabel")
@@ -111,10 +139,13 @@ function Library.addInfoDisplay()
     Label.TextColor3 = Color3.fromRGB(255, 255, 255)
     Label.Font = Enum.Font.Gotham
     Label.TextSize = 14
-    Label.Text = "FPS: 0 | Ping: 0 | Username: " .. game.Players.LocalPlayer.Name
     Label.Parent = Info
     
-    Library.InfoDisplays[#Library.InfoDisplays + 1] = Label
+    RunService.RenderStepped:Connect(function()
+        local ping = Players.LocalPlayer:GetNetworkPing() * 1000
+        local fps = math.floor(1 / RunService.RenderStepped:Wait())
+        Label.Text = string.format("FPS: %d | Ping: %d ms | Username: %s", fps, ping, Players.LocalPlayer.Name)
+    end)
     
     return Info
 end
