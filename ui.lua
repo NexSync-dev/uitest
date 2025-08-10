@@ -200,29 +200,26 @@ local function auto(imgur)
         print("request successful")
         print("Pixels count:", #pixelsTable)
 
-        for i = 1, #pixelsTable do
-            local player = game:GetService("Players").LocalPlayer
-            local location = player.PlayerGui.MainGui.PaintFrame.GridHolder.Grid:FindFirstChild(tostring(i))
+ for i = 1, #pixelsTable do
+    local player = game:GetService("Players").LocalPlayer
+    local location = player.PlayerGui.MainGui.PaintFrame.GridHolder.Grid:FindFirstChild(tostring(i))
 
-            if location then
-                print("Changing pixel", i, "to color", pixelsTable[i])
-                changeColor(pixelsTable[i])
-                wait(0.01)  -- tiny delay to let UI update
+    if location then
+        print("Changing pixel", i, "to color", pixelsTable[i])
+        changeColor(pixelsTable[i])
+        wait(0.05)  -- let the color update
 
-                local mouseEvents = {location.MouseButton1Down, location.MouseButton1Click, location.MouseButton1Up}
-                for _, event in ipairs(mouseEvents) do
-                    if event then
-                        local connections = getconnections(event)
-                        print("Firing", #connections, "connections for event", event.Name)
-                        for _, conn in ipairs(connections) do
-                            conn:Fire()
-                        end
-                    end
-                end
-            else
-                print("Pixel button", i, "not found")
-            end
+        location:Activate()
+        wait(0.1)   -- delay between pixel draws
+
+        if i % 10 == 0 then
+            wait(0.5)  -- extra pause every 10 pixels to avoid freezing
         end
+    else
+        print("Pixel button", i, "not found")
+    end
+end
+
 
         spawn(function()
             playSound("6493287948", 0.1)
