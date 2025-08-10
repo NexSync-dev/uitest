@@ -210,7 +210,7 @@ local function auto(imgur)
         wait(0.05)  -- let the color update
 
         location:Activate()
-        wait(0.1)   -- delay between pixel draws
+        wait(1)   -- delay between pixel draws
 
         if i % 10 == 0 then
             wait(0.5)  -- extra pause every 10 pixels to avoid freezing
