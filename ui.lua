@@ -5,6 +5,7 @@
 -- ██║  ██║██║██║        ██║       ╚██████╔╝██║
 -- ╚═╝  ╚═╝╚═╝╚═╝        ╚═╝        ╚═════╝ ╚═╝
 -- Rift UI Library — v1.2 (dropdown leak fix + visual refresh)
+-- this shi lowk tuff as hell
 
 local Rift = {}
 Rift.__index = Rift
@@ -92,9 +93,7 @@ local function lockMouse()
     UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 end
 
--- ════════════════════════════════════════════════
--- WINDOW
--- ════════════════════════════════════════════════
+
 function Rift.new(config)
     local self = setmetatable({}, Rift)
     config = config or {}
@@ -134,7 +133,7 @@ function Rift.new(config)
     make("ImageLabel", {
         Parent = shadowHolder,
         BackgroundTransparency = 1,
-        Image = "rbxassetid://6014261993",
+        Image = "rbxassetid://6014261993", -- heheh
         ImageColor3 = Theme.Accent,
         ImageTransparency = 0.78,
         Size = UDim2.new(1, 60, 1, 60),
@@ -279,9 +278,7 @@ function Rift.new(config)
     return self
 end
 
--- ════════════════════════════════════════════════
--- TOGGLE  — hides leaked dropdown panels too
--- ════════════════════════════════════════════════
+
 function Rift:Toggle()
     self.Open = not self.Open
     local win = self.Window
@@ -312,9 +309,7 @@ function Rift:Toggle()
     end
 end
 
--- ════════════════════════════════════════════════
--- NOTIFY
--- ════════════════════════════════════════════════
+
 function Rift:Notify(config)
     config = config or {}
     local msg = config.Message or config.Title or "Notification"
@@ -380,9 +375,7 @@ function Rift:Notify(config)
     end)
 end
 
--- ════════════════════════════════════════════════
--- TAB
--- ════════════════════════════════════════════════
+
 function Rift:Tab(config)
     config = config or {}
     local tabName = config.Name or config.name or "Tab"
@@ -467,7 +460,6 @@ function Rift:Tab(config)
     if #self.Tabs == 0 then activate() end
     table.insert(self.Tabs, tab)
 
-    -- ── SECTION ──────────────────────────────────────────
     function tab:Section(cfg)
         cfg = cfg or {}
         local secName = cfg.Name or cfg.name or "Section"
