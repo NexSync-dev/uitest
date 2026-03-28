@@ -4,7 +4,7 @@
 -- ██╔══██╗██║██╔══╝     ██║       ██║   ██║██║
 -- ██║  ██║██║██║        ██║       ╚██████╔╝██║
 -- ╚═╝  ╚═╝╚═╝╚═╝        ╚═╝        ╚═════╝ ╚═╝
--- Rift UI Library — v1.1 (shadow fix)
+-- Rift UI Library — v1.2 (dropdown leak fix + visual refresh)
 
 local Rift = {}
 Rift.__index = Rift
@@ -18,16 +18,16 @@ local CoreGui          = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 
 local Theme = {
-    Background   = Color3.fromRGB(10,  10,  12),
-    Surface      = Color3.fromRGB(16,  16,  20),
-    SurfaceHover = Color3.fromRGB(22,  22,  28),
-    Border       = Color3.fromRGB(35,  35,  45),
-    Accent       = Color3.fromRGB(99,  102, 241),
-    AccentDim    = Color3.fromRGB(55,  57,  140),
-    AccentGlow   = Color3.fromRGB(139, 92,  246),
-    Text         = Color3.fromRGB(230, 230, 240),
-    TextDim      = Color3.fromRGB(120, 120, 140),
-    TextMuted    = Color3.fromRGB(65,  65,  80),
+    Background   = Color3.fromRGB(11,  11,  13),
+    Surface      = Color3.fromRGB(17,  17,  21),
+    SurfaceHover = Color3.fromRGB(24,  24,  30),
+    Border       = Color3.fromRGB(32,  32,  42),
+    Accent       = Color3.fromRGB(56,  189, 248),   -- sky blue
+    AccentDim    = Color3.fromRGB(14,  116, 174),
+    AccentGlow   = Color3.fromRGB(125, 211, 252),
+    Text         = Color3.fromRGB(228, 228, 235),
+    TextDim      = Color3.fromRGB(110, 110, 130),
+    TextMuted    = Color3.fromRGB(55,  55,  70),
     Success      = Color3.fromRGB(52,  211, 153),
     Warning      = Color3.fromRGB(251, 191, 36),
     Danger       = Color3.fromRGB(239, 68,  68),
@@ -120,14 +120,14 @@ function Rift.new(config)
     if not sg.Parent then sg.Parent = lp:WaitForChild("PlayerGui") end
     self.ScreenGui = sg
 
-    -- Shadow — stored as self._shadowHolder so Toggle() can hide it
+    -- Shadow
     local shadowHolder = make("Frame", {
         Parent = sg,
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 724, 0, 464),
         Position = UDim2.new(0.5, -362, 0.5, -232),
         ZIndex = 1,
-        Visible = false,   -- starts hidden, shown after open anim
+        Visible = false,
     })
     self._shadowHolder = shadowHolder
 
@@ -136,7 +136,7 @@ function Rift.new(config)
         BackgroundTransparency = 1,
         Image = "rbxassetid://6014261993",
         ImageColor3 = Theme.Accent,
-        ImageTransparency = 0.72,
+        ImageTransparency = 0.78,
         Size = UDim2.new(1, 60, 1, 60),
         Position = UDim2.new(0, -30, 0, -30),
         ZIndex = 1,
@@ -157,64 +157,41 @@ function Rift.new(config)
     stroke(win, Theme.Border, 1)
     self.Window = win
 
-    make("ImageLabel", {
-        Parent = win, BackgroundTransparency = 1,
-        Image = "rbxassetid://9968344807", ImageTransparency = 0.94,
-        Size = UDim2.new(1, 0, 1, 0), ZIndex = 100,
-        ScaleType = Enum.ScaleType.Tile, TileSize = UDim2.new(0, 128, 0, 128),
-    })
-
+    -- Subtle top accent line
     local accentLine = make("Frame", {
         Parent = win, BackgroundColor3 = Theme.Accent,
-        Size = UDim2.new(0, 0, 0, 2), BorderSizePixel = 0, ZIndex = 10,
+        Size = UDim2.new(0, 0, 0, 1), BorderSizePixel = 0, ZIndex = 10,
     })
-    tween(accentLine, { Size = UDim2.new(1, 0, 0, 2) }, 0.6, Enum.EasingStyle.Quart)
-
-    local topGlow = make("Frame", {
-        Parent = win, BackgroundColor3 = Theme.Accent,
-        BackgroundTransparency = 0.88,
-        Size = UDim2.new(1, 0, 0, 60), BorderSizePixel = 0, ZIndex = 3,
-    })
-    make("UIGradient", {
-        Parent = topGlow, Rotation = 90,
-        Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1),
-        }),
-    })
+    tween(accentLine, { Size = UDim2.new(1, 0, 0, 1) }, 0.5, Enum.EasingStyle.Quart)
 
     local titlebar = make("Frame", {
         Parent = win, BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 52),
-        Position = UDim2.new(0, 0, 0, 2), ZIndex = 5,
+        Position = UDim2.new(0, 0, 0, 1), ZIndex = 5,
     })
 
-    local dotFrame = make("Frame", {
-        Parent = titlebar, BackgroundTransparency = 1,
-        Size = UDim2.new(0, 28, 0, 28),
-        Position = UDim2.new(0, 16, 0.5, -14), ZIndex = 6,
+    -- Single left-edge bar instead of the three-dot cluster
+    local titleAccentBar = make("Frame", {
+        Parent = titlebar, BackgroundColor3 = Theme.Accent,
+        Size = UDim2.new(0, 3, 0, 22),
+        Position = UDim2.new(0, 16, 0.5, -11),
+        BorderSizePixel = 0, ZIndex = 7,
     })
-    for i, col in ipairs({ Theme.Accent, Theme.AccentGlow, Color3.fromRGB(236, 72, 153) }) do
-        make("Frame", {
-            Parent = dotFrame, BackgroundColor3 = col,
-            Size = UDim2.new(0, 7, 0, 7),
-            Position = UDim2.new(0, (i-1)*10, 0, i==2 and 10 or i==3 and 5 or 0),
-            BorderSizePixel = 0, ZIndex = 7,
-        })
-    end
+    corner(titleAccentBar, 2)
 
     make("TextLabel", {
         Parent = titlebar, Text = self.Title,
-        TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, TextSize = 15,
+        TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, TextSize = 14,
         BackgroundTransparency = 1, Size = UDim2.new(0, 200, 1, 0),
-        Position = UDim2.new(0, 52, 0, 0),
+        Position = UDim2.new(0, 28, 0, 0),
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6,
     })
     if self.Subtitle ~= "" then
         make("TextLabel", {
-            Parent = titlebar, Text = "  ·  " .. self.Subtitle,
-            TextColor3 = Theme.TextDim, Font = Enum.Font.Gotham, TextSize = 12,
-            BackgroundTransparency = 1, Size = UDim2.new(0, 300, 1, 0),
-            Position = UDim2.new(0, 175, 0, 0),
+            Parent = titlebar, Text = "/ " .. self.Subtitle,
+            TextColor3 = Theme.TextMuted, Font = Enum.Font.Gotham, TextSize = 12,
+            BackgroundTransparency = 1, Size = UDim2.new(0, 280, 1, 0),
+            Position = UDim2.new(0, 168, 0, 0),
             TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6,
         })
     end
@@ -234,7 +211,7 @@ function Rift.new(config)
 
     local sidebar = make("Frame", {
         Parent = win, BackgroundColor3 = Theme.Surface,
-        Size = UDim2.new(0, 155, 1, -54),
+        Size = UDim2.new(0, 148, 1, -54),
         Position = UDim2.new(0, 0, 0, 54), BorderSizePixel = 0, ZIndex = 4,
     })
     make("Frame", {
@@ -245,17 +222,17 @@ function Rift.new(config)
 
     local tabBtnHolder = make("Frame", {
         Parent = sidebar, BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, -12),
-        Position = UDim2.new(0, 0, 0, 12), ZIndex = 5,
+        Size = UDim2.new(1, 0, 1, -10),
+        Position = UDim2.new(0, 0, 0, 10), ZIndex = 5,
     })
     listLayout(tabBtnHolder, Enum.FillDirection.Vertical, 2)
-    padding(tabBtnHolder, 0, 0, 8, 8)
+    padding(tabBtnHolder, 0, 0, 7, 7)
     self.TabBtnHolder = tabBtnHolder
 
     local content = make("Frame", {
         Parent = win, BackgroundTransparency = 1,
-        Size = UDim2.new(1, -155, 1, -54),
-        Position = UDim2.new(0, 155, 0, 54),
+        Size = UDim2.new(1, -148, 1, -54),
+        Position = UDim2.new(0, 148, 0, 54),
         BorderSizePixel = 0, ZIndex = 4, ClipsDescendants = true,
     })
     self.Content = content
@@ -287,7 +264,7 @@ function Rift.new(config)
         if self.Open then unlockMouse() end
     end))
 
-    -- Open animation — reveal shadow only after window is done
+    -- Open animation
     win.Size = UDim2.new(0, 0, 0, 0)
     win.Position = UDim2.new(0.5, 0, 0.5, 0)
     win.BackgroundTransparency = 1
@@ -303,12 +280,21 @@ function Rift.new(config)
 end
 
 -- ════════════════════════════════════════════════
--- TOGGLE  ← shadow fix: hide/show shadowHolder
+-- TOGGLE  — hides leaked dropdown panels too
 -- ════════════════════════════════════════════════
 function Rift:Toggle()
     self.Open = not self.Open
     local win = self.Window
     local sh  = self._shadowHolder
+
+    -- close/hide any dropdown panels that leaked onto the ScreenGui
+    for _, obj in ipairs(self.ScreenGui:GetChildren()) do
+        if obj ~= win and obj ~= sh and obj.Name ~= "RiftNotif" then
+            if obj:IsA("Frame") then
+                obj.Visible = false
+            end
+        end
+    end
 
     if self.Open then
         win.Visible = true
@@ -316,7 +302,7 @@ function Rift:Toggle()
         unlockMouse()
         tween(win, { BackgroundTransparency = 0 }, 0.2)
     else
-        sh.Visible = false   -- ← gone immediately, no leftover glow
+        sh.Visible = false
         tween(win, { BackgroundTransparency = 1 }, 0.18).Completed:Connect(function()
             if not self.Open then win.Visible = false end
         end)
@@ -345,25 +331,25 @@ function Rift:Notify(config)
     local notif = make("Frame", {
         Parent = sg, Name = "RiftNotif",
         BackgroundColor3 = Theme.Surface,
-        Size = UDim2.new(0, 280, 0, sub ~= "" and 56 or 42),
+        Size = UDim2.new(0, 270, 0, sub ~= "" and 54 or 40),
         Position = UDim2.new(1, 10, 1, -(yOff + 56)),
         BorderSizePixel = 0, ZIndex = 200,
     })
-    corner(notif, 8); stroke(notif, Theme.Border, 1)
+    corner(notif, 7); stroke(notif, Theme.Border, 1)
 
     local bar = make("Frame", {
         Parent = notif, BackgroundColor3 = col,
-        Size = UDim2.new(0, 3, 1, -12),
+        Size = UDim2.new(0, 2, 1, -12),
         Position = UDim2.new(0, 6, 0, 6),
         BorderSizePixel = 0, ZIndex = 201,
     })
-    corner(bar, 2)
+    corner(bar, 1)
 
     make("TextLabel", {
         Parent = notif, Text = msg,
         TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, TextSize = 13,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, -24, 0, 20), Position = UDim2.new(0, 18, 0, 10),
+        Size = UDim2.new(1, -22, 0, 20), Position = UDim2.new(0, 16, 0, 10),
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 202, TextTruncate = Enum.TextTruncate.AtEnd,
     })
@@ -372,7 +358,7 @@ function Rift:Notify(config)
             Parent = notif, Text = sub,
             TextColor3 = Theme.TextDim, Font = Enum.Font.Gotham, TextSize = 11,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -24, 0, 16), Position = UDim2.new(0, 18, 0, 30),
+            Size = UDim2.new(1, -22, 0, 16), Position = UDim2.new(0, 16, 0, 30),
             TextXAlignment = Enum.TextXAlignment.Left,
             ZIndex = 202, TextTruncate = Enum.TextTruncate.AtEnd,
         })
@@ -380,13 +366,13 @@ function Rift:Notify(config)
 
     local prog = make("Frame", {
         Parent = notif, BackgroundColor3 = col, BackgroundTransparency = 0.6,
-        Size = UDim2.new(1, -14, 0, 2), Position = UDim2.new(0, 7, 1, -4),
+        Size = UDim2.new(1, -14, 0, 1), Position = UDim2.new(0, 7, 1, -3),
         BorderSizePixel = 0, ZIndex = 203,
     })
     corner(prog, 1)
 
-    tween(notif, { Position = UDim2.new(1, -290, 1, -(yOff+56)) }, 0.3, Enum.EasingStyle.Back)
-    tween(prog, { Size = UDim2.new(0, 0, 0, 2) }, dur - 0.3, Enum.EasingStyle.Linear)
+    tween(notif, { Position = UDim2.new(1, -280, 1, -(yOff+56)) }, 0.3, Enum.EasingStyle.Back)
+    tween(prog, { Size = UDim2.new(0, 0, 0, 1) }, dur - 0.3, Enum.EasingStyle.Linear)
     task.delay(dur, function()
         tween(notif, { Position = UDim2.new(1, 10, 1, -(yOff+56)) }, 0.25).Completed:Connect(function()
             notif:Destroy()
@@ -404,22 +390,22 @@ function Rift:Tab(config)
 
     local btn = make("TextButton", {
         Parent = self.TabBtnHolder, Text = "",
-        BackgroundColor3 = Theme.Background, BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 36), BorderSizePixel = 0, ZIndex = 6, AutoButtonColor = false,
+        BackgroundColor3 = Theme.SurfaceHover, BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0, ZIndex = 6, AutoButtonColor = false,
     })
-    corner(btn, 6)
+    corner(btn, 5)
 
     local indicator = make("Frame", {
         Parent = btn, Name = "Indicator",
         BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1,
-        Size = UDim2.new(0, 3, 0, 18), Position = UDim2.new(0, -3, 0.5, -9),
+        Size = UDim2.new(0, 2, 0, 16), Position = UDim2.new(0, -2, 0.5, -8),
         BorderSizePixel = 0, ZIndex = 7,
     })
-    corner(indicator, 2)
+    corner(indicator, 1)
 
     local btnLabel = make("TextLabel", {
         Parent = btn, Name = "Label", Text = tabName,
-        TextColor3 = Theme.TextDim, Font = Enum.Font.GothamMedium, TextSize = 13,
+        TextColor3 = Theme.TextDim, Font = Enum.Font.GothamMedium, TextSize = 12,
         BackgroundTransparency = 1, Size = UDim2.new(1, -12, 1, 0),
         Position = UDim2.new(0, 12, 0, 0),
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
@@ -428,8 +414,8 @@ function Rift:Tab(config)
     local page = make("ScrollingFrame", {
         Parent = self.Content, BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 1, 0), BorderSizePixel = 0, ZIndex = 5, Visible = false,
-        ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Accent,
-        ScrollBarImageTransparency = 0.4,
+        ScrollBarThickness = 2, ScrollBarImageColor3 = Theme.Accent,
+        ScrollBarImageTransparency = 0.5,
         CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
         ScrollingDirection = Enum.ScrollingDirection.Y,
     })
@@ -439,7 +425,7 @@ function Rift:Tab(config)
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         BorderSizePixel = 0, ZIndex = 5,
     })
-    padding(cols, 14, 14, 14, 14)
+    padding(cols, 12, 12, 12, 12)
     make("UIListLayout", {
         Parent = cols, FillDirection = Enum.FillDirection.Horizontal,
         Padding = UDim.new(0, 10),
@@ -459,7 +445,7 @@ function Rift:Tab(config)
             tween(prev._btn.Indicator, { BackgroundTransparency = 1 }, 0.15)
         end
         self.ActiveTab = tab; page.Visible = true
-        tween(btn, { BackgroundTransparency = 0.85 }, 0.15)
+        tween(btn, { BackgroundTransparency = 0.88 }, 0.15)
         tween(btnLabel, { TextColor3 = Theme.Text }, 0.15)
         tween(indicator, { BackgroundTransparency = 0 }, 0.15)
     end
@@ -467,7 +453,7 @@ function Rift:Tab(config)
     btn.MouseButton1Click:Connect(activate)
     btn.MouseEnter:Connect(function()
         if self.ActiveTab ~= tab then
-            tween(btn, { BackgroundTransparency = 0.92 }, 0.1)
+            tween(btn, { BackgroundTransparency = 0.93 }, 0.1)
             tween(btnLabel, { TextColor3 = Theme.Text }, 0.1)
         end
     end)
@@ -506,38 +492,43 @@ function Rift:Tab(config)
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             BorderSizePixel = 0, ZIndex = 6,
         })
-        corner(container, 8); stroke(container, Theme.Border, 1)
+        corner(container, 7); stroke(container, Theme.Border, 1)
 
+        -- Header: minimal, no all-caps, no underline bar
         local header = make("Frame", {
             Parent = container, BackgroundColor3 = Theme.Background,
-            Size = UDim2.new(1, 0, 0, 32), BorderSizePixel = 0, ZIndex = 7,
+            Size = UDim2.new(1, 0, 0, 30), BorderSizePixel = 0, ZIndex = 7,
         })
-        make("UICorner", { Parent = header, CornerRadius = UDim.new(0, 7) })
-        make("Frame", {   -- covers bottom rounded corners of header
+        make("UICorner", { Parent = header, CornerRadius = UDim.new(0, 6) })
+        -- Mask bottom rounding
+        make("Frame", {
             Parent = header, BackgroundColor3 = Theme.Background,
-            Size = UDim2.new(1, 0, 0, 8), Position = UDim2.new(0, 0, 1, -8),
+            Size = UDim2.new(1, 0, 0, 7), Position = UDim2.new(0, 0, 1, -7),
             BorderSizePixel = 0, ZIndex = 7,
         })
-        make("TextLabel", {
-            Parent = header, Text = secName:upper(),
-            TextColor3 = Theme.Accent, Font = Enum.Font.GothamBold, TextSize = 10,
-            BackgroundTransparency = 1, Size = UDim2.new(1, -14, 1, 0),
-            Position = UDim2.new(0, 14, 0, 0),
-            TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8,
-        })
+        -- Small accent dot instead of underline
         make("Frame", {
             Parent = header, BackgroundColor3 = Theme.Accent,
-            Size = UDim2.new(0, 30, 0, 2), Position = UDim2.new(0, 14, 1, -2),
+            Size = UDim2.new(0, 4, 0, 4),
+            Position = UDim2.new(0, 12, 0.5, -2),
             BorderSizePixel = 0, ZIndex = 8,
+        })
+        make("UICorner", { Parent = header:FindFirstChildOfClass("Frame"), CornerRadius = UDim.new(1, 0) })
+        make("TextLabel", {
+            Parent = header, Text = secName,
+            TextColor3 = Theme.TextDim, Font = Enum.Font.GothamMedium, TextSize = 11,
+            BackgroundTransparency = 1, Size = UDim2.new(1, -24, 1, 0),
+            Position = UDim2.new(0, 22, 0, 0),
+            TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8,
         })
 
         local elemHolder = make("Frame", {
             Parent = container, BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 0, 32),
+            Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 0, 30),
             AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 0, ZIndex = 7,
         })
         listLayout(elemHolder, Enum.FillDirection.Vertical, 0)
-        padding(elemHolder, 6, 10, 10, 10)
+        padding(elemHolder, 5, 9, 9, 9)
         sec._elemHolder = elemHolder
 
         -- TOGGLE
@@ -558,22 +549,22 @@ function Rift:Tab(config)
                 Parent = row, BackgroundColor3 = Theme.SurfaceHover, BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 1, 0), BorderSizePixel = 0, ZIndex = 8,
             })
-            corner(hover, 5)
+            corner(hover, 4)
             make("TextLabel", {
                 Parent = row, Text = name, TextColor3 = Theme.Text,
-                Font = Enum.Font.Gotham, TextSize = 13, BackgroundTransparency = 1,
+                Font = Enum.Font.Gotham, TextSize = 12, BackgroundTransparency = 1,
                 Size = UDim2.new(1, -52, 1, 0), Position = UDim2.new(0, 8, 0, 0),
                 TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
             })
             local pillBg = make("Frame", {
                 Parent = row, BackgroundColor3 = Theme.Border,
-                Size = UDim2.new(0, 36, 0, 18), Position = UDim2.new(1, -44, 0.5, -9),
+                Size = UDim2.new(0, 34, 0, 17), Position = UDim2.new(1, -42, 0.5, -8),
                 BorderSizePixel = 0, ZIndex = 9,
             })
             corner(pillBg, 9)
             local pillDot = make("Frame", {
                 Parent = pillBg, BackgroundColor3 = Theme.TextMuted,
-                Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new(0, 3, 0.5, -6),
+                Size = UDim2.new(0, 11, 0, 11), Position = UDim2.new(0, 3, 0.5, -5),
                 BorderSizePixel = 0, ZIndex = 10,
             })
             corner(pillDot, 6)
@@ -582,10 +573,10 @@ function Rift:Tab(config)
                 val = v; self._lib.Flags[flag] = val
                 if val then
                     tween(pillBg,  { BackgroundColor3 = Theme.Accent }, 0.18)
-                    tween(pillDot, { Position = UDim2.new(0, 21, 0.5, -6), BackgroundColor3 = Theme.White }, 0.18)
+                    tween(pillDot, { Position = UDim2.new(0, 20, 0.5, -5), BackgroundColor3 = Theme.White }, 0.18)
                 else
                     tween(pillBg,  { BackgroundColor3 = Theme.Border }, 0.18)
-                    tween(pillDot, { Position = UDim2.new(0, 3, 0.5, -6), BackgroundColor3 = Theme.TextMuted }, 0.18)
+                    tween(pillDot, { Position = UDim2.new(0, 3, 0.5, -5), BackgroundColor3 = Theme.TextMuted }, 0.18)
                 end
                 cb(val)
             end
@@ -619,23 +610,23 @@ function Rift:Tab(config)
                 Parent = wrap, BackgroundColor3 = Theme.SurfaceHover, BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 1, 0), BorderSizePixel = 0, ZIndex = 8,
             })
-            corner(hover, 5)
+            corner(hover, 4)
             make("TextLabel", {
                 Parent = wrap, Text = name, TextColor3 = Theme.Text,
-                Font = Enum.Font.Gotham, TextSize = 13, BackgroundTransparency = 1,
+                Font = Enum.Font.Gotham, TextSize = 12, BackgroundTransparency = 1,
                 Size = UDim2.new(0.7, 0, 0, 20), Position = UDim2.new(0, 8, 0, 4),
                 TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
             })
             local valLabel = make("TextLabel", {
                 Parent = wrap, Text = tostring(val)..suffix,
-                TextColor3 = Theme.Accent, Font = Enum.Font.GothamBold, TextSize = 12,
+                TextColor3 = Theme.Accent, Font = Enum.Font.GothamBold, TextSize = 11,
                 BackgroundTransparency = 1,
                 Size = UDim2.new(0.3, -8, 0, 20), Position = UDim2.new(0.7, 0, 0, 4),
                 TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 9,
             })
             local trackBg = make("Frame", {
                 Parent = wrap, BackgroundColor3 = Theme.Border,
-                Size = UDim2.new(1, -16, 0, 4), Position = UDim2.new(0, 8, 0, 30),
+                Size = UDim2.new(1, -16, 0, 3), Position = UDim2.new(0, 8, 0, 31),
                 BorderSizePixel = 0, ZIndex = 9,
             })
             corner(trackBg, 2)
@@ -647,11 +638,11 @@ function Rift:Tab(config)
             corner(trackFill, 2)
             local handle = make("Frame", {
                 Parent = trackBg, BackgroundColor3 = Theme.White,
-                Size = UDim2.new(0, 12, 0, 12),
-                Position = UDim2.new((val-min)/(max-min), -6, 0.5, -6),
+                Size = UDim2.new(0, 11, 0, 11),
+                Position = UDim2.new((val-min)/(max-min), -5, 0.5, -5),
                 BorderSizePixel = 0, ZIndex = 11,
             })
-            corner(handle, 6); stroke(handle, Theme.Accent, 2)
+            corner(handle, 6); stroke(handle, Theme.Accent, 1)
 
             local dragging = false
             local function updateSlider(x)
@@ -663,7 +654,7 @@ function Rift:Tab(config)
                 local dv = decimals == 0 and tostring(math.floor(val)) or string.format("%."..decimals.."f", val)
                 valLabel.Text = dv..suffix
                 trackFill.Size = UDim2.new(pct, 0, 1, 0)
-                handle.Position = UDim2.new(pct, -6, 0.5, -6)
+                handle.Position = UDim2.new(pct, -5, 0.5, -5)
                 cb(val)
             end
             local sliderBtn = make("TextButton", {
@@ -692,7 +683,7 @@ function Rift:Tab(config)
                     val = math.clamp(v, min, max)
                     local pct = (val-min)/(max-min)
                     trackFill.Size = UDim2.new(pct, 0, 1, 0)
-                    handle.Position = UDim2.new(pct, -6, 0.5, -6)
+                    handle.Position = UDim2.new(pct, -5, 0.5, -5)
                     valLabel.Text = tostring(val)..suffix
                     self._lib.Flags[flag] = val; cb(val)
                 end,
@@ -719,7 +710,7 @@ function Rift:Tab(config)
             })
             make("TextLabel", {
                 Parent = wrap, Text = name, TextColor3 = Theme.TextDim,
-                Font = Enum.Font.Gotham, TextSize = 11, BackgroundTransparency = 1,
+                Font = Enum.Font.Gotham, TextSize = 10, BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 8, 0, 2),
                 TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
             })
@@ -728,10 +719,10 @@ function Rift:Tab(config)
                 Size = UDim2.new(1, 0, 0, 26), Position = UDim2.new(0, 0, 0, 18),
                 BorderSizePixel = 0, ZIndex = 9, AutoButtonColor = false,
             })
-            corner(btn, 6); stroke(btn, Theme.Border, 1)
+            corner(btn, 5); stroke(btn, Theme.Border, 1)
             local selLabel = make("TextLabel", {
                 Parent = btn, Text = multi and "None" or tostring(default),
-                TextColor3 = Theme.Text, Font = Enum.Font.Gotham, TextSize = 12,
+                TextColor3 = Theme.Text, Font = Enum.Font.Gotham, TextSize = 11,
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, -28, 1, 0), Position = UDim2.new(0, 8, 0, 0),
                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -843,9 +834,9 @@ function Rift:Tab(config)
             local cb   = opts.Callback or opts.callback or function() end
             local btn = make("TextButton", {
                 Parent = self._elemHolder, Text = "", BackgroundColor3 = Theme.AccentDim,
-                Size = UDim2.new(1, 0, 0, 30), BorderSizePixel = 0, ZIndex = 8, AutoButtonColor = false,
+                Size = UDim2.new(1, 0, 0, 28), BorderSizePixel = 0, ZIndex = 8, AutoButtonColor = false,
             })
-            corner(btn, 6)
+            corner(btn, 5)
             make("UIGradient", {
                 Parent = btn, Rotation = 90,
                 Color = ColorSequence.new({
@@ -855,7 +846,7 @@ function Rift:Tab(config)
             })
             make("TextLabel", {
                 Parent = btn, Text = name, TextColor3 = Theme.White,
-                Font = Enum.Font.GothamBold, TextSize = 12,
+                Font = Enum.Font.GothamBold, TextSize = 11,
                 BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 9,
             })
             btn.MouseEnter:Connect(function() tween(btn, { BackgroundColor3 = Theme.Accent }, 0.1) end)
@@ -884,29 +875,29 @@ function Rift:Tab(config)
                 Parent = row, BackgroundColor3 = Theme.SurfaceHover, BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 1, 0), BorderSizePixel = 0, ZIndex = 8,
             })
-            corner(hover, 5)
+            corner(hover, 4)
             make("TextLabel", {
                 Parent = row, Text = name, TextColor3 = Theme.Text,
-                Font = Enum.Font.Gotham, TextSize = 13, BackgroundTransparency = 1,
+                Font = Enum.Font.Gotham, TextSize = 12, BackgroundTransparency = 1,
                 Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.new(0, 8, 0, 0),
                 TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
             })
             local keyBtn = make("TextButton", {
                 Parent = row, BackgroundColor3 = Theme.Background,
-                Size = UDim2.new(0, 72, 0, 20), Position = UDim2.new(1, -80, 0.5, -10),
+                Size = UDim2.new(0, 68, 0, 19), Position = UDim2.new(1, -76, 0.5, -9),
                 BorderSizePixel = 0, ZIndex = 9, AutoButtonColor = false,
             })
             corner(keyBtn, 4); stroke(keyBtn, Theme.Border, 1)
             local keyLabel = make("TextLabel", {
                 Parent = keyBtn,
                 Text = tostring(boundKey):gsub("Enum.KeyCode.", ""),
-                TextColor3 = Theme.Accent, Font = Enum.Font.GothamBold, TextSize = 11,
+                TextColor3 = Theme.Accent, Font = Enum.Font.GothamBold, TextSize = 10,
                 BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 10,
             })
             local modeLabel = make("TextLabel", {
                 Parent = row, Text = mode, TextColor3 = Theme.TextMuted,
                 Font = Enum.Font.Gotham, TextSize = 9, BackgroundTransparency = 1,
-                Size = UDim2.new(0, 72, 0, 10), Position = UDim2.new(1, -80, 1, -10), ZIndex = 9,
+                Size = UDim2.new(0, 68, 0, 10), Position = UDim2.new(1, -76, 1, -10), ZIndex = 9,
             })
             local modes = {"Toggle","Hold","Always"}; local modeIdx = 1
             for i, m in ipairs(modes) do if m == mode then modeIdx = i end end
@@ -996,4 +987,3 @@ function Rift:Destroy()
 end
 
 return Rift
-
