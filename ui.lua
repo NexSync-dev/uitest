@@ -4,8 +4,7 @@
 -- ██╔══██╗██║██╔══╝     ██║       ██║   ██║██║
 -- ██║  ██║██║██║        ██║       ╚██████╔╝██║
 -- ╚═╝  ╚═╝╚═╝╚═╝        ╚═╝        ╚═════╝ ╚═╝
--- Rift UI Library — v1.2 (dropdown leak fix + visual refresh)
--- this shi lowk tuff as hell
+-- Rift UI Library — v1.3 (animated refresh)
 
 local Rift = {}
 Rift.__index = Rift
@@ -19,11 +18,11 @@ local CoreGui          = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 
 local Theme = {
-    Background   = Color3.fromRGB(11,  11,  13),
-    Surface      = Color3.fromRGB(17,  17,  21),
-    SurfaceHover = Color3.fromRGB(24,  24,  30),
-    Border       = Color3.fromRGB(32,  32,  42),
-    Accent       = Color3.fromRGB(56,  189, 248),   -- sky blue
+    Background   = Color3.fromRGB(11,  11,  14),
+    Surface      = Color3.fromRGB(17,  17,  22),
+    SurfaceHover = Color3.fromRGB(26,  26,  33),
+    Border       = Color3.fromRGB(34,  34,  44),
+    Accent       = Color3.fromRGB(56,  189, 248),
     AccentDim    = Color3.fromRGB(14,  116, 174),
     AccentGlow   = Color3.fromRGB(125, 211, 252),
     Text         = Color3.fromRGB(228, 228, 235),
@@ -34,8 +33,14 @@ local Theme = {
     Danger       = Color3.fromRGB(239, 68,  68),
     White        = Color3.fromRGB(255, 255, 255),
     Black        = Color3.fromRGB(0,   0,   0),
+    Orb1         = Color3.fromRGB(56,  189, 248),
+    Orb2         = Color3.fromRGB(99,  102, 241),
+    Orb3         = Color3.fromRGB(52,  211, 153),
 }
 
+-- ════════════════════════════════════════════════
+-- HELPERS
+-- ════════════════════════════════════════════════
 local function tween(obj, props, t, style, dir)
     local ti = TweenInfo.new(t or 0.18, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out)
     local tw = TweenService:Create(obj, ti, props)
@@ -83,6 +88,44 @@ local function listLayout(parent, dir, pad, halign, valign)
     })
 end
 
+-- Ping-pong animation loop between two states
+local function loopTween(obj, propsA, propsB, t, style)
+    local alive = true
+    local function cycle(to, from)
+        if not alive then return end
+        tween(obj, to, t, style or Enum.EasingStyle.Sine, Enum.EasingDirection.InOut).Completed:Connect(function()
+            if not alive then return end
+            tween(obj, from, t, style or Enum.EasingStyle.Sine, Enum.EasingDirection.InOut).Completed:Connect(function()
+                cycle(to, from)
+            end)
+        end)
+    end
+    cycle(propsA, propsB)
+    return function() alive = false end
+end
+
+-- Click ripple that expands and fades from the cursor
+local function ripple(parent, relX, relY)
+    local r = make("Frame", {
+        Parent = parent,
+        BackgroundColor3 = Theme.White,
+        BackgroundTransparency = 0.82,
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0, relX, 0, relY),
+        BorderSizePixel = 0,
+        ZIndex = parent.ZIndex + 5,
+    })
+    corner(r, 9999)
+    local sz = math.max(parent.AbsoluteSize.X, parent.AbsoluteSize.Y) * 2.2
+    tween(r, {
+        Size     = UDim2.new(0, sz, 0, sz),
+        Position = UDim2.new(0, relX - sz/2, 0, relY - sz/2),
+        BackgroundTransparency = 1,
+    }, 0.55, Enum.EasingStyle.Quart).Completed:Connect(function()
+        r:Destroy()
+    end)
+end
+
 local function unlockMouse()
     lp.CameraMode = Enum.CameraMode.Classic
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
@@ -93,7 +136,9 @@ local function lockMouse()
     UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 end
 
-
+-- ════════════════════════════════════════════════
+-- WINDOW
+-- ════════════════════════════════════════════════
 function Rift.new(config)
     local self = setmetatable({}, Rift)
     config = config or {}
@@ -106,6 +151,7 @@ function Rift.new(config)
     self.ActiveTab   = nil
     self.Flags       = {}
     self.Connections = {}
+    self._loopKills  = {}
 
     local sg = make("ScreenGui", {
         Name           = "RiftUI_" .. math.random(100000, 999999),
@@ -119,95 +165,125 @@ function Rift.new(config)
     if not sg.Parent then sg.Parent = lp:WaitForChild("PlayerGui") end
     self.ScreenGui = sg
 
-    -- Shadow
+    -- ── Shadow ──
     local shadowHolder = make("Frame", {
-        Parent = sg,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 724, 0, 464),
-        Position = UDim2.new(0.5, -362, 0.5, -232),
-        ZIndex = 1,
-        Visible = false,
+        Parent = sg, BackgroundTransparency = 1,
+        Size = UDim2.new(0, 760, 0, 500),
+        Position = UDim2.new(0.5, -380, 0.5, -250),
+        ZIndex = 1, Visible = false,
     })
     self._shadowHolder = shadowHolder
-
     make("ImageLabel", {
-        Parent = shadowHolder,
-        BackgroundTransparency = 1,
-        Image = "rbxassetid://6014261993", -- heheh
-        ImageColor3 = Theme.Accent,
-        ImageTransparency = 0.78,
-        Size = UDim2.new(1, 60, 1, 60),
-        Position = UDim2.new(0, -30, 0, -30),
-        ZIndex = 1,
-        ScaleType = Enum.ScaleType.Slice,
+        Parent = shadowHolder, BackgroundTransparency = 1,
+        Image = "rbxassetid://6014261993",
+        ImageColor3 = Theme.Accent, ImageTransparency = 0.75,
+        Size = UDim2.new(1, 80, 1, 80), Position = UDim2.new(0, -40, 0, -40),
+        ZIndex = 1, ScaleType = Enum.ScaleType.Slice,
         SliceCenter = Rect.new(49, 49, 450, 450),
     })
 
+    -- ── Main window ──
     local win = make("Frame", {
-        Parent = sg,
-        BackgroundColor3 = Theme.Background,
+        Parent = sg, BackgroundColor3 = Theme.Background,
         Size = UDim2.new(0, 720, 0, 460),
         Position = UDim2.new(0.5, -360, 0.5, -230),
-        BorderSizePixel = 0,
-        ZIndex = 2,
-        ClipsDescendants = true,
+        BorderSizePixel = 0, ZIndex = 2, ClipsDescendants = true,
     })
     corner(win, 10)
     stroke(win, Theme.Border, 1)
     self.Window = win
 
-    -- Subtle top accent line
+    -- ── Animated ambient orbs (background life) ──
+    local orbContainer = make("Frame", {
+        Parent = win, BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0), ZIndex = 1,
+    })
+
+    local function makeOrb(color, size, x, y, tr)
+        local orb = make("Frame", {
+            Parent = orbContainer, BackgroundColor3 = color,
+            BackgroundTransparency = tr, Size = UDim2.new(0, size, 0, size),
+            Position = UDim2.new(0, x, 0, y), BorderSizePixel = 0, ZIndex = 1,
+        })
+        corner(orb, size)
+        return orb
+    end
+
+    local orb1 = makeOrb(Theme.Orb1, 320, -60, -80,  0.90)
+    local orb2 = makeOrb(Theme.Orb2, 260, 430, 180,  0.92)
+    local orb3 = makeOrb(Theme.Orb3, 200, 190, 260,  0.93)
+
+    table.insert(self._loopKills, loopTween(orb1,
+        { Position = UDim2.new(0, -40, 0, -55), BackgroundTransparency = 0.88 },
+        { Position = UDim2.new(0, -80, 0, -110), BackgroundTransparency = 0.93 }, 6))
+    table.insert(self._loopKills, loopTween(orb2,
+        { Position = UDim2.new(0, 445, 0, 160), BackgroundTransparency = 0.90 },
+        { Position = UDim2.new(0, 405, 0, 215), BackgroundTransparency = 0.94 }, 8))
+    table.insert(self._loopKills, loopTween(orb3,
+        { Position = UDim2.new(0, 175, 0, 245), BackgroundTransparency = 0.91 },
+        { Position = UDim2.new(0, 230, 0, 285), BackgroundTransparency = 0.95 }, 7))
+
+    -- ── Top accent line ──
     local accentLine = make("Frame", {
         Parent = win, BackgroundColor3 = Theme.Accent,
         Size = UDim2.new(0, 0, 0, 1), BorderSizePixel = 0, ZIndex = 10,
     })
-    tween(accentLine, { Size = UDim2.new(1, 0, 0, 1) }, 0.5, Enum.EasingStyle.Quart)
 
+    -- ── Title bar ──
     local titlebar = make("Frame", {
         Parent = win, BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 52),
         Position = UDim2.new(0, 0, 0, 1), ZIndex = 5,
     })
 
-    -- Single left-edge bar instead of the three-dot cluster
     local titleAccentBar = make("Frame", {
         Parent = titlebar, BackgroundColor3 = Theme.Accent,
-        Size = UDim2.new(0, 3, 0, 22),
-        Position = UDim2.new(0, 16, 0.5, -11),
+        Size = UDim2.new(0, 3, 0, 0),
+        Position = UDim2.new(0, 16, 0.5, 11),
         BorderSizePixel = 0, ZIndex = 7,
     })
     corner(titleAccentBar, 2)
+    -- Subtle color pulse on the bar
+    table.insert(self._loopKills, loopTween(titleAccentBar,
+        { BackgroundColor3 = Theme.Accent },
+        { BackgroundColor3 = Theme.AccentGlow }, 2.5))
 
-    make("TextLabel", {
+    local titleLabel = make("TextLabel", {
         Parent = titlebar, Text = self.Title,
         TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, TextSize = 14,
         BackgroundTransparency = 1, Size = UDim2.new(0, 200, 1, 0),
         Position = UDim2.new(0, 28, 0, 0),
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6,
+        TextTransparency = 1,
     })
+    local subtitleLabel
     if self.Subtitle ~= "" then
-        make("TextLabel", {
+        subtitleLabel = make("TextLabel", {
             Parent = titlebar, Text = "/ " .. self.Subtitle,
             TextColor3 = Theme.TextMuted, Font = Enum.Font.Gotham, TextSize = 12,
             BackgroundTransparency = 1, Size = UDim2.new(0, 280, 1, 0),
             Position = UDim2.new(0, 168, 0, 0),
             TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6,
+            TextTransparency = 1,
         })
     end
-    make("TextLabel", {
+    local toggleHintLabel = make("TextLabel", {
         Parent = titlebar,
         Text = tostring(self.ToggleKey):gsub("Enum.KeyCode.", "") .. " to toggle",
         TextColor3 = Theme.TextMuted, Font = Enum.Font.Gotham, TextSize = 10,
         BackgroundTransparency = 1, Size = UDim2.new(0, 150, 1, 0),
         Position = UDim2.new(1, -166, 0, 0),
         TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 6,
+        TextTransparency = 1,
     })
-    make("Frame", {
+
+    local divider = make("Frame", {
         Parent = win, BackgroundColor3 = Theme.Border,
-        Size = UDim2.new(1, 0, 0, 1),
+        Size = UDim2.new(0, 0, 0, 1),
         Position = UDim2.new(0, 0, 0, 53), BorderSizePixel = 0, ZIndex = 5,
     })
 
+    -- ── Sidebar ──
     local sidebar = make("Frame", {
         Parent = win, BackgroundColor3 = Theme.Surface,
         Size = UDim2.new(0, 148, 1, -54),
@@ -217,6 +293,19 @@ function Rift.new(config)
         Parent = sidebar, BackgroundColor3 = Theme.Border,
         Size = UDim2.new(0, 1, 1, 0),
         Position = UDim2.new(1, -1, 0, 0), BorderSizePixel = 0, ZIndex = 5,
+    })
+    -- Sidebar top accent fade
+    local sideGrad = make("Frame", {
+        Parent = sidebar, BackgroundColor3 = Theme.Accent,
+        BackgroundTransparency = 0.94,
+        Size = UDim2.new(1, 0, 0, 80), BorderSizePixel = 0, ZIndex = 5,
+    })
+    make("UIGradient", {
+        Parent = sideGrad, Rotation = 90,
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0),
+            NumberSequenceKeypoint.new(1, 1),
+        }),
     })
 
     local tabBtnHolder = make("Frame", {
@@ -236,7 +325,7 @@ function Rift.new(config)
     })
     self.Content = content
 
-    -- Dragging
+    -- ── Dragging ──
     local dragging, dragStart, startPos = false, nil, nil
     titlebar.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -246,8 +335,8 @@ function Rift.new(config)
     UserInputService.InputChanged:Connect(function(inp)
         if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
             local d = inp.Position - dragStart
-            win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
-            shadowHolder.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X+2, startPos.Y.Scale, startPos.Y.Offset+d.Y+2)
+            win.Position        = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
+            shadowHolder.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
         end
     end)
     UserInputService.InputEnded:Connect(function(inp)
@@ -258,49 +347,71 @@ function Rift.new(config)
         if gpe then return end
         if inp.KeyCode == self.ToggleKey then self:Toggle() end
     end))
-
     table.insert(self.Connections, RunService.RenderStepped:Connect(function()
         if self.Open then unlockMouse() end
     end))
 
-    -- Open animation
-    win.Size = UDim2.new(0, 0, 0, 0)
-    win.Position = UDim2.new(0.5, 0, 0.5, 0)
+    -- ── Orchestrated open animation ──
+    win.Size = UDim2.new(0, 660, 0, 0)
+    win.Position = UDim2.new(0.5, -330, 0.5, 0)
     win.BackgroundTransparency = 1
+
     tween(win, {
         Size = UDim2.new(0, 720, 0, 460),
         Position = UDim2.new(0.5, -360, 0.5, -230),
         BackgroundTransparency = 0,
-    }, 0.35, Enum.EasingStyle.Back).Completed:Connect(function()
+    }, 0.4, Enum.EasingStyle.Back).Completed:Connect(function()
         shadowHolder.Visible = true
+        -- Accent line draws across
+        tween(accentLine, { Size = UDim2.new(1, 0, 0, 1) }, 0.35, Enum.EasingStyle.Quart)
+        -- Divider draws across
+        tween(divider, { Size = UDim2.new(1, 0, 0, 1) }, 0.3, Enum.EasingStyle.Quart)
+        -- Title accent bar slides down
+        tween(titleAccentBar, {
+            Size = UDim2.new(0, 3, 0, 22),
+            Position = UDim2.new(0, 16, 0.5, -11),
+        }, 0.3, Enum.EasingStyle.Back)
+        -- Text fades in with stagger
+        task.delay(0.08, function() tween(titleLabel, { TextTransparency = 0 }, 0.25) end)
+        task.delay(0.15, function()
+            if subtitleLabel then tween(subtitleLabel, { TextTransparency = 0 }, 0.25) end
+        end)
+        task.delay(0.22, function() tween(toggleHintLabel, { TextTransparency = 0 }, 0.25) end)
     end)
 
     return self
 end
 
-
+-- ════════════════════════════════════════════════
+-- TOGGLE
+-- ════════════════════════════════════════════════
 function Rift:Toggle()
     self.Open = not self.Open
     local win = self.Window
     local sh  = self._shadowHolder
 
-    -- close/hide any dropdown panels that leaked onto the ScreenGui
+    -- Kill any stray dropdown panels
     for _, obj in ipairs(self.ScreenGui:GetChildren()) do
         if obj ~= win and obj ~= sh and obj.Name ~= "RiftNotif" then
-            if obj:IsA("Frame") then
-                obj.Visible = false
-            end
+            if obj:IsA("Frame") then obj.Visible = false end
         end
     end
 
     if self.Open then
         win.Visible = true
         sh.Visible  = true
+        win.BackgroundTransparency = 1
+        tween(win, {
+            BackgroundTransparency = 0,
+            Size = UDim2.new(0, 720, 0, 460),
+        }, 0.25, Enum.EasingStyle.Back)
         unlockMouse()
-        tween(win, { BackgroundTransparency = 0 }, 0.2)
     else
         sh.Visible = false
-        tween(win, { BackgroundTransparency = 1 }, 0.18).Completed:Connect(function()
+        tween(win, {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 690, 0, 440),
+        }, 0.2, Enum.EasingStyle.Quart).Completed:Connect(function()
             if not self.Open then win.Visible = false end
         end)
         task.delay(0.2, function()
@@ -309,7 +420,9 @@ function Rift:Toggle()
     end
 end
 
-
+-- ════════════════════════════════════════════════
+-- NOTIFY
+-- ════════════════════════════════════════════════
 function Rift:Notify(config)
     config = config or {}
     local msg = config.Message or config.Title or "Notification"
@@ -318,6 +431,7 @@ function Rift:Notify(config)
     local col = config.Color or Theme.Accent
     local sg  = self.ScreenGui
 
+    local notifH = sub ~= "" and 58 or 44
     local yOff = 20
     for _, v in ipairs(sg:GetChildren()) do
         if v.Name == "RiftNotif" then yOff = yOff + v.AbsoluteSize.Y + 8 end
@@ -326,25 +440,25 @@ function Rift:Notify(config)
     local notif = make("Frame", {
         Parent = sg, Name = "RiftNotif",
         BackgroundColor3 = Theme.Surface,
-        Size = UDim2.new(0, 270, 0, sub ~= "" and 54 or 40),
-        Position = UDim2.new(1, 10, 1, -(yOff + 56)),
+        Size = UDim2.new(0, 280, 0, notifH),
+        Position = UDim2.new(1, 20, 1, -(yOff + notifH)),
         BorderSizePixel = 0, ZIndex = 200,
+        BackgroundTransparency = 0.08,
     })
-    corner(notif, 7); stroke(notif, Theme.Border, 1)
+    corner(notif, 8)
+    local notifStroke = stroke(notif, col, 1)
 
-    local bar = make("Frame", {
+    make("Frame", {
         Parent = notif, BackgroundColor3 = col,
-        Size = UDim2.new(0, 2, 1, -12),
-        Position = UDim2.new(0, 6, 0, 6),
+        Size = UDim2.new(0, 2, 1, -14),
+        Position = UDim2.new(0, 7, 0, 7),
         BorderSizePixel = 0, ZIndex = 201,
     })
-    corner(bar, 1)
-
     make("TextLabel", {
         Parent = notif, Text = msg,
         TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, TextSize = 13,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, -22, 0, 20), Position = UDim2.new(0, 16, 0, 10),
+        Size = UDim2.new(1, -24, 0, 20), Position = UDim2.new(0, 18, 0, 12),
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 202, TextTruncate = Enum.TextTruncate.AtEnd,
     })
@@ -353,29 +467,39 @@ function Rift:Notify(config)
             Parent = notif, Text = sub,
             TextColor3 = Theme.TextDim, Font = Enum.Font.Gotham, TextSize = 11,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -22, 0, 16), Position = UDim2.new(0, 16, 0, 30),
+            Size = UDim2.new(1, -24, 0, 16), Position = UDim2.new(0, 18, 0, 32),
             TextXAlignment = Enum.TextXAlignment.Left,
             ZIndex = 202, TextTruncate = Enum.TextTruncate.AtEnd,
         })
     end
 
     local prog = make("Frame", {
-        Parent = notif, BackgroundColor3 = col, BackgroundTransparency = 0.6,
-        Size = UDim2.new(1, -14, 0, 1), Position = UDim2.new(0, 7, 1, -3),
+        Parent = notif, BackgroundColor3 = col, BackgroundTransparency = 0.55,
+        Size = UDim2.new(1, -16, 0, 2), Position = UDim2.new(0, 8, 1, -5),
         BorderSizePixel = 0, ZIndex = 203,
     })
     corner(prog, 1)
 
-    tween(notif, { Position = UDim2.new(1, -280, 1, -(yOff+56)) }, 0.3, Enum.EasingStyle.Back)
-    tween(prog, { Size = UDim2.new(0, 0, 0, 1) }, dur - 0.3, Enum.EasingStyle.Linear)
+    tween(notif, { Position = UDim2.new(1, -294, 1, -(yOff + notifH)) }, 0.35, Enum.EasingStyle.Back)
+    tween(prog, { Size = UDim2.new(0, 0, 0, 2) }, dur - 0.35, Enum.EasingStyle.Linear)
+
+    -- Border pulse on arrival
+    task.delay(0.35, function()
+        tween(notifStroke, { Transparency = 0.5 }, 0.25)
+        task.delay(0.25, function() tween(notifStroke, { Transparency = 0 }, 0.25) end)
+    end)
+
     task.delay(dur, function()
-        tween(notif, { Position = UDim2.new(1, 10, 1, -(yOff+56)) }, 0.25).Completed:Connect(function()
-            notif:Destroy()
-        end)
+        tween(notif, {
+            Position = UDim2.new(1, 20, 1, -(yOff + notifH)),
+            BackgroundTransparency = 1,
+        }, 0.25).Completed:Connect(function() notif:Destroy() end)
     end)
 end
 
-
+-- ════════════════════════════════════════════════
+-- TAB
+-- ════════════════════════════════════════════════
 function Rift:Tab(config)
     config = config or {}
     local tabName = config.Name or config.name or "Tab"
@@ -384,14 +508,16 @@ function Rift:Tab(config)
     local btn = make("TextButton", {
         Parent = self.TabBtnHolder, Text = "",
         BackgroundColor3 = Theme.SurfaceHover, BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0, ZIndex = 6, AutoButtonColor = false,
+        Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0, ZIndex = 6,
+        AutoButtonColor = false, ClipsDescendants = true,
     })
     corner(btn, 5)
 
     local indicator = make("Frame", {
         Parent = btn, Name = "Indicator",
         BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1,
-        Size = UDim2.new(0, 2, 0, 16), Position = UDim2.new(0, -2, 0.5, -8),
+        Size = UDim2.new(0, 2, 0, 0),
+        Position = UDim2.new(0, 0, 0.5, 8),
         BorderSizePixel = 0, ZIndex = 7,
     })
     corner(indicator, 1)
@@ -435,15 +561,47 @@ function Rift:Tab(config)
             prev._page.Visible = false
             tween(prev._btn, { BackgroundTransparency = 1 }, 0.15)
             tween(prev._btn.Label, { TextColor3 = Theme.TextDim }, 0.15)
-            tween(prev._btn.Indicator, { BackgroundTransparency = 1 }, 0.15)
+            tween(prev._btn.Indicator, {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 2, 0, 0),
+                Position = UDim2.new(0, 0, 0.5, 8),
+            }, 0.2)
         end
-        self.ActiveTab = tab; page.Visible = true
+        self.ActiveTab = tab
+        page.Visible = true
+
+        -- Staggered section card reveal
+        local delay = 0
+        for _, col in ipairs(cols:GetChildren()) do
+            if col:IsA("Frame") then
+                for _, sec in ipairs(col:GetChildren()) do
+                    if sec:IsA("Frame") then
+                        sec.BackgroundTransparency = 1
+                        local d = delay
+                        task.delay(d, function()
+                            tween(sec, { BackgroundTransparency = 0 }, 0.22, Enum.EasingStyle.Quart)
+                        end)
+                        delay = delay + 0.05
+                    end
+                end
+            end
+        end
+
         tween(btn, { BackgroundTransparency = 0.88 }, 0.15)
         tween(btnLabel, { TextColor3 = Theme.Text }, 0.15)
-        tween(indicator, { BackgroundTransparency = 0 }, 0.15)
+        tween(indicator, {
+            BackgroundTransparency = 0,
+            Size = UDim2.new(0, 2, 0, 16),
+            Position = UDim2.new(0, 0, 0.5, -8),
+        }, 0.25, Enum.EasingStyle.Back)
     end
 
-    btn.MouseButton1Click:Connect(activate)
+    btn.MouseButton1Click:Connect(function()
+        local mp = UserInputService:GetMouseLocation()
+        local bp = btn.AbsolutePosition
+        ripple(btn, mp.X - bp.X, mp.Y - bp.Y)
+        activate()
+    end)
     btn.MouseEnter:Connect(function()
         if self.ActiveTab ~= tab then
             tween(btn, { BackgroundTransparency = 0.93 }, 0.1)
@@ -460,6 +618,7 @@ function Rift:Tab(config)
     if #self.Tabs == 0 then activate() end
     table.insert(self.Tabs, tab)
 
+    -- ── SECTION ──────────────────────────────────────────
     function tab:Section(cfg)
         cfg = cfg or {}
         local secName = cfg.Name or cfg.name or "Section"
@@ -484,32 +643,38 @@ function Rift:Tab(config)
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             BorderSizePixel = 0, ZIndex = 6,
         })
-        corner(container, 7); stroke(container, Theme.Border, 1)
+        corner(container, 7)
+        local secStroke = stroke(container, Theme.Border, 1)
 
-        -- Header: minimal, no all-caps, no underline bar
+        -- Section border brightens on hover
+        container.MouseEnter:Connect(function()
+            tween(secStroke, { Color = Theme.AccentDim }, 0.2)
+        end)
+        container.MouseLeave:Connect(function()
+            tween(secStroke, { Color = Theme.Border }, 0.25)
+        end)
+
         local header = make("Frame", {
             Parent = container, BackgroundColor3 = Theme.Background,
             Size = UDim2.new(1, 0, 0, 30), BorderSizePixel = 0, ZIndex = 7,
         })
         make("UICorner", { Parent = header, CornerRadius = UDim.new(0, 6) })
-        -- Mask bottom rounding
         make("Frame", {
             Parent = header, BackgroundColor3 = Theme.Background,
             Size = UDim2.new(1, 0, 0, 7), Position = UDim2.new(0, 0, 1, -7),
             BorderSizePixel = 0, ZIndex = 7,
         })
-        -- Small accent dot instead of underline
-        make("Frame", {
+        local headerDot = make("Frame", {
             Parent = header, BackgroundColor3 = Theme.Accent,
             Size = UDim2.new(0, 4, 0, 4),
             Position = UDim2.new(0, 12, 0.5, -2),
             BorderSizePixel = 0, ZIndex = 8,
         })
-        make("UICorner", { Parent = header:FindFirstChildOfClass("Frame"), CornerRadius = UDim.new(1, 0) })
+        corner(headerDot, 4)
         make("TextLabel", {
             Parent = header, Text = secName,
             TextColor3 = Theme.TextDim, Font = Enum.Font.GothamMedium, TextSize = 11,
-            BackgroundTransparency = 1, Size = UDim2.new(1, -24, 1, 0),
+            BackgroundTransparency = 1, Size = UDim2.new(1, -26, 1, 0),
             Position = UDim2.new(0, 22, 0, 0),
             TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8,
         })
@@ -523,7 +688,7 @@ function Rift:Tab(config)
         padding(elemHolder, 5, 9, 9, 9)
         sec._elemHolder = elemHolder
 
-        -- TOGGLE
+        -- ── TOGGLE ───────────────────────────────────────
         function sec:Toggle(opts)
             opts = opts or {}
             local name    = opts.Name or opts.name or "Toggle"
@@ -535,7 +700,8 @@ function Rift:Tab(config)
 
             local row = make("TextButton", {
                 Parent = self._elemHolder, Text = "", BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 32), BorderSizePixel = 0, ZIndex = 8, AutoButtonColor = false,
+                Size = UDim2.new(1, 0, 0, 32), BorderSizePixel = 0, ZIndex = 8,
+                AutoButtonColor = false, ClipsDescendants = true,
             })
             local hover = make("Frame", {
                 Parent = row, BackgroundColor3 = Theme.SurfaceHover, BackgroundTransparency = 1,
@@ -548,6 +714,14 @@ function Rift:Tab(config)
                 Size = UDim2.new(1, -52, 1, 0), Position = UDim2.new(0, 8, 0, 0),
                 TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
             })
+            -- Glow halo behind pill
+            local pillGlow = make("Frame", {
+                Parent = row, BackgroundColor3 = Theme.Accent,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 42, 0, 25), Position = UDim2.new(1, -46, 0.5, -12),
+                BorderSizePixel = 0, ZIndex = 8,
+            })
+            corner(pillGlow, 13)
             local pillBg = make("Frame", {
                 Parent = row, BackgroundColor3 = Theme.Border,
                 Size = UDim2.new(0, 34, 0, 17), Position = UDim2.new(1, -42, 0.5, -8),
@@ -561,26 +735,50 @@ function Rift:Tab(config)
             })
             corner(pillDot, 6)
 
-            local function setState(v)
+            local function setState(v, instant)
                 val = v; self._lib.Flags[flag] = val
                 if val then
-                    tween(pillBg,  { BackgroundColor3 = Theme.Accent }, 0.18)
-                    tween(pillDot, { Position = UDim2.new(0, 20, 0.5, -5), BackgroundColor3 = Theme.White }, 0.18)
+                    if instant then
+                        pillBg.BackgroundColor3   = Theme.Accent
+                        pillDot.Position          = UDim2.new(0, 20, 0.5, -5)
+                        pillDot.BackgroundColor3  = Theme.White
+                        pillDot.Size              = UDim2.new(0, 13, 0, 13)
+                        pillGlow.BackgroundTransparency = 0.82
+                    else
+                        tween(pillBg,   { BackgroundColor3 = Theme.Accent }, 0.2)
+                        tween(pillDot,  { Position = UDim2.new(0, 20, 0.5, -6), BackgroundColor3 = Theme.White, Size = UDim2.new(0, 13, 0, 13) }, 0.2, Enum.EasingStyle.Back)
+                        tween(pillGlow, { BackgroundTransparency = 0.82 }, 0.2)
+                    end
                 else
-                    tween(pillBg,  { BackgroundColor3 = Theme.Border }, 0.18)
-                    tween(pillDot, { Position = UDim2.new(0, 3, 0.5, -5), BackgroundColor3 = Theme.TextMuted }, 0.18)
+                    if instant then
+                        pillBg.BackgroundColor3   = Theme.Border
+                        pillDot.Position          = UDim2.new(0, 3, 0.5, -5)
+                        pillDot.BackgroundColor3  = Theme.TextMuted
+                        pillDot.Size              = UDim2.new(0, 11, 0, 11)
+                        pillGlow.BackgroundTransparency = 1
+                    else
+                        tween(pillBg,   { BackgroundColor3 = Theme.Border }, 0.2)
+                        tween(pillDot,  { Position = UDim2.new(0, 3, 0.5, -5), BackgroundColor3 = Theme.TextMuted, Size = UDim2.new(0, 11, 0, 11) }, 0.18)
+                        tween(pillGlow, { BackgroundTransparency = 1 }, 0.2)
+                    end
                 end
                 cb(val)
             end
-            setState(default)
-            row.MouseButton1Click:Connect(function() setState(not val) end)
+            setState(default, true)
+
+            row.MouseButton1Click:Connect(function()
+                local mp = UserInputService:GetMouseLocation()
+                local rp = row.AbsolutePosition
+                ripple(row, mp.X - rp.X, mp.Y - rp.Y)
+                setState(not val)
+            end)
             row.MouseEnter:Connect(function() tween(hover, { BackgroundTransparency = 0.85 }, 0.1) end)
             row.MouseLeave:Connect(function() tween(hover, { BackgroundTransparency = 1 }, 0.1) end)
 
-            return { Set = setState, Get = function() return val end }
+            return { Set = function(v) setState(v) end, Get = function() return val end }
         end
 
-        -- SLIDER
+        -- ── SLIDER ───────────────────────────────────────
         function sec:Slider(opts)
             opts = opts or {}
             local name     = opts.Name or opts.name or "Slider"
@@ -596,7 +794,7 @@ function Rift:Tab(config)
 
             local wrap = make("Frame", {
                 Parent = self._elemHolder, BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 42), BorderSizePixel = 0, ZIndex = 8,
+                Size = UDim2.new(1, 0, 0, 44), BorderSizePixel = 0, ZIndex = 8,
             })
             local hover = make("Frame", {
                 Parent = wrap, BackgroundColor3 = Theme.SurfaceHover, BackgroundTransparency = 1,
@@ -618,7 +816,7 @@ function Rift:Tab(config)
             })
             local trackBg = make("Frame", {
                 Parent = wrap, BackgroundColor3 = Theme.Border,
-                Size = UDim2.new(1, -16, 0, 3), Position = UDim2.new(0, 8, 0, 31),
+                Size = UDim2.new(1, -16, 0, 3), Position = UDim2.new(0, 8, 0, 32),
                 BorderSizePixel = 0, ZIndex = 9,
             })
             corner(trackBg, 2)
@@ -628,13 +826,22 @@ function Rift:Tab(config)
                 BorderSizePixel = 0, ZIndex = 10,
             })
             corner(trackFill, 2)
+            -- Gradient glow on fill
+            make("UIGradient", {
+                Parent = trackFill,
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Theme.AccentDim),
+                    ColorSequenceKeypoint.new(1, Theme.AccentGlow),
+                }),
+            })
             local handle = make("Frame", {
                 Parent = trackBg, BackgroundColor3 = Theme.White,
-                Size = UDim2.new(0, 11, 0, 11),
-                Position = UDim2.new((val-min)/(max-min), -5, 0.5, -5),
+                Size = UDim2.new(0, 12, 0, 12),
+                Position = UDim2.new((val-min)/(max-min), -6, 0.5, -6),
                 BorderSizePixel = 0, ZIndex = 11,
             })
-            corner(handle, 6); stroke(handle, Theme.Accent, 1)
+            corner(handle, 6)
+            local handleStroke = stroke(handle, Theme.Accent, 1)
 
             local dragging = false
             local function updateSlider(x)
@@ -646,17 +853,21 @@ function Rift:Tab(config)
                 local dv = decimals == 0 and tostring(math.floor(val)) or string.format("%."..decimals.."f", val)
                 valLabel.Text = dv..suffix
                 trackFill.Size = UDim2.new(pct, 0, 1, 0)
-                handle.Position = UDim2.new(pct, -5, 0.5, -5)
+                handle.Position = UDim2.new(pct, dragging and -8 or -6, 0.5, dragging and -8 or -6)
                 cb(val)
             end
             local sliderBtn = make("TextButton", {
                 Parent = trackBg, Text = "", BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 1, 16), Position = UDim2.new(0, 0, 0, -8),
+                Size = UDim2.new(1, 0, 1, 18), Position = UDim2.new(0, 0, 0, -9),
                 BorderSizePixel = 0, ZIndex = 12, AutoButtonColor = false,
             })
             sliderBtn.InputBegan:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                    dragging = true; updateSlider(inp.Position.X)
+                    dragging = true
+                    updateSlider(inp.Position.X)
+                    -- Handle grows on grab
+                    tween(handle, { Size = UDim2.new(0, 16, 0, 16) }, 0.14, Enum.EasingStyle.Back)
+                    tween(handleStroke, { Color = Theme.AccentGlow, Thickness = 2 }, 0.12)
                 end
             end)
             UserInputService.InputChanged:Connect(function(inp)
@@ -665,17 +876,31 @@ function Rift:Tab(config)
                 end
             end)
             UserInputService.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
+                    dragging = false
+                    local pct = (val-min)/(max-min)
+                    handle.Position = UDim2.new(pct, -6, 0.5, -6)
+                    tween(handle, { Size = UDim2.new(0, 12, 0, 12) }, 0.15)
+                    tween(handleStroke, { Color = Theme.Accent, Thickness = 1 }, 0.15)
+                end
             end)
-            wrap.MouseEnter:Connect(function() tween(hover, { BackgroundTransparency = 0.85 }, 0.1) end)
-            wrap.MouseLeave:Connect(function() tween(hover, { BackgroundTransparency = 1 }, 0.1) end)
+            wrap.MouseEnter:Connect(function()
+                tween(hover, { BackgroundTransparency = 0.85 }, 0.1)
+                tween(handleStroke, { Color = Theme.AccentGlow }, 0.15)
+            end)
+            wrap.MouseLeave:Connect(function()
+                if not dragging then
+                    tween(hover, { BackgroundTransparency = 1 }, 0.1)
+                    tween(handleStroke, { Color = Theme.Accent }, 0.15)
+                end
+            end)
 
             return {
                 Set = function(v)
                     val = math.clamp(v, min, max)
                     local pct = (val-min)/(max-min)
                     trackFill.Size = UDim2.new(pct, 0, 1, 0)
-                    handle.Position = UDim2.new(pct, -5, 0.5, -5)
+                    handle.Position = UDim2.new(pct, -6, 0.5, -6)
                     valLabel.Text = tostring(val)..suffix
                     self._lib.Flags[flag] = val; cb(val)
                 end,
@@ -683,7 +908,7 @@ function Rift:Tab(config)
             }
         end
 
-        -- DROPDOWN
+        -- ── DROPDOWN ─────────────────────────────────────
         function sec:Dropdown(opts)
             opts = opts or {}
             local name    = opts.Name or opts.name or "Dropdown"
@@ -710,8 +935,10 @@ function Rift:Tab(config)
                 Parent = wrap, Text = "", BackgroundColor3 = Theme.Background,
                 Size = UDim2.new(1, 0, 0, 26), Position = UDim2.new(0, 0, 0, 18),
                 BorderSizePixel = 0, ZIndex = 9, AutoButtonColor = false,
+                ClipsDescendants = true,
             })
-            corner(btn, 5); stroke(btn, Theme.Border, 1)
+            corner(btn, 5)
+            local btnStroke = stroke(btn, Theme.Border, 1)
             local selLabel = make("TextLabel", {
                 Parent = btn, Text = multi and "None" or tostring(default),
                 TextColor3 = Theme.Text, Font = Enum.Font.Gotham, TextSize = 11,
@@ -753,6 +980,7 @@ function Rift:Tab(config)
                     panel.Visible = false
                 end)
                 tween(arrow, { Rotation = 0 }, 0.15)
+                tween(btnStroke, { Color = Theme.Border }, 0.15)
             end
             local function buildOptions()
                 for _, ob in ipairs(optBtns) do ob:Destroy() end
@@ -765,11 +993,15 @@ function Rift:Tab(config)
                         Size = UDim2.new(1, 0, 0, 26), BorderSizePixel = 0,
                         ZIndex = 502, AutoButtonColor = false,
                         TextXAlignment = Enum.TextXAlignment.Left,
+                        ClipsDescendants = true,
                     })
                     corner(ob, 4); table.insert(optBtns, ob)
                     ob.MouseEnter:Connect(function() tween(ob, { BackgroundTransparency = 0.8 }, 0.1) end)
                     ob.MouseLeave:Connect(function() tween(ob, { BackgroundTransparency = 1 }, 0.1) end)
                     ob.MouseButton1Click:Connect(function()
+                        local mp = UserInputService:GetMouseLocation()
+                        local op = ob.AbsolutePosition
+                        ripple(ob, mp.X - op.X, mp.Y - op.Y)
                         if multi then
                             local found = false
                             for i, v in ipairs(selected) do if v == item then found = i break end end
@@ -789,10 +1021,14 @@ function Rift:Tab(config)
                 panel.Size = UDim2.new(0, sz.X, 0, 0)
                 panel.Position = UDim2.new(0, abs.X, 0, abs.Y + sz.Y + 4)
                 panel.Visible = true; isOpen = true
-                tween(panel, { Size = UDim2.new(0, sz.X, 0, targetH) }, 0.2, Enum.EasingStyle.Back)
+                tween(panel, { Size = UDim2.new(0, sz.X, 0, targetH) }, 0.22, Enum.EasingStyle.Back)
                 tween(arrow, { Rotation = 180 }, 0.15)
+                tween(btnStroke, { Color = Theme.Accent }, 0.15)
             end
             btn.MouseButton1Click:Connect(function()
+                local mp = UserInputService:GetMouseLocation()
+                local bp = btn.AbsolutePosition
+                ripple(btn, mp.X - bp.X, mp.Y - bp.Y)
                 if isOpen then closeDropdown() else openDropdown() end
             end)
             UserInputService.InputBegan:Connect(function(inp)
@@ -819,14 +1055,15 @@ function Rift:Tab(config)
             }
         end
 
-        -- BUTTON
+        -- ── BUTTON ───────────────────────────────────────
         function sec:Button(opts)
             opts = opts or {}
             local name = opts.Name or opts.name or "Button"
             local cb   = opts.Callback or opts.callback or function() end
             local btn = make("TextButton", {
                 Parent = self._elemHolder, Text = "", BackgroundColor3 = Theme.AccentDim,
-                Size = UDim2.new(1, 0, 0, 28), BorderSizePixel = 0, ZIndex = 8, AutoButtonColor = false,
+                Size = UDim2.new(1, 0, 0, 30), BorderSizePixel = 0, ZIndex = 8,
+                AutoButtonColor = false, ClipsDescendants = true,
             })
             corner(btn, 5)
             make("UIGradient", {
@@ -841,14 +1078,29 @@ function Rift:Tab(config)
                 Font = Enum.Font.GothamBold, TextSize = 11,
                 BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 9,
             })
-            btn.MouseEnter:Connect(function() tween(btn, { BackgroundColor3 = Theme.Accent }, 0.1) end)
-            btn.MouseLeave:Connect(function() tween(btn, { BackgroundColor3 = Theme.AccentDim }, 0.1) end)
-            btn.MouseButton1Down:Connect(function() tween(btn, { BackgroundColor3 = Theme.AccentGlow }, 0.08) end)
-            btn.MouseButton1Up:Connect(function() tween(btn, { BackgroundColor3 = Theme.Accent }, 0.08) end)
-            btn.MouseButton1Click:Connect(cb)
+            btn.MouseEnter:Connect(function()
+                tween(btn, { BackgroundColor3 = Theme.Accent }, 0.1)
+            end)
+            btn.MouseLeave:Connect(function()
+                tween(btn, { BackgroundColor3 = Theme.AccentDim }, 0.12)
+            end)
+            btn.MouseButton1Down:Connect(function()
+                -- Squish down
+                tween(btn, { BackgroundColor3 = Theme.AccentGlow, Size = UDim2.new(1, -4, 0, 27) }, 0.07)
+            end)
+            btn.MouseButton1Up:Connect(function()
+                -- Spring back
+                tween(btn, { BackgroundColor3 = Theme.Accent, Size = UDim2.new(1, 0, 0, 30) }, 0.18, Enum.EasingStyle.Back)
+            end)
+            btn.MouseButton1Click:Connect(function()
+                local mp = UserInputService:GetMouseLocation()
+                local bp = btn.AbsolutePosition
+                ripple(btn, mp.X - bp.X, mp.Y - bp.Y)
+                cb()
+            end)
         end
 
-        -- KEYBIND
+        -- ── KEYBIND ──────────────────────────────────────
         function sec:Keybind(opts)
             opts = opts or {}
             local name    = opts.Name or opts.name or "Keybind"
@@ -876,10 +1128,12 @@ function Rift:Tab(config)
             })
             local keyBtn = make("TextButton", {
                 Parent = row, BackgroundColor3 = Theme.Background,
-                Size = UDim2.new(0, 68, 0, 19), Position = UDim2.new(1, -76, 0.5, -9),
+                Size = UDim2.new(0, 68, 0, 20), Position = UDim2.new(1, -76, 0.5, -10),
                 BorderSizePixel = 0, ZIndex = 9, AutoButtonColor = false,
+                ClipsDescendants = true,
             })
-            corner(keyBtn, 4); stroke(keyBtn, Theme.Border, 1)
+            corner(keyBtn, 4)
+            local keyStroke = stroke(keyBtn, Theme.Border, 1)
             local keyLabel = make("TextLabel", {
                 Parent = keyBtn,
                 Text = tostring(boundKey):gsub("Enum.KeyCode.", ""),
@@ -896,12 +1150,15 @@ function Rift:Tab(config)
 
             keyBtn.MouseButton2Click:Connect(function()
                 modeIdx = modeIdx % #modes + 1; mode = modes[modeIdx]; modeLabel.Text = mode
+                tween(keyStroke, { Color = Theme.Accent }, 0.1)
+                task.delay(0.2, function() tween(keyStroke, { Color = Theme.Border }, 0.15) end)
                 self._lib.Flags[flag].Mode = mode
                 if mode == "Always" then active = true; cb(true) else active = false; cb(false) end
             end)
             keyBtn.MouseButton1Click:Connect(function()
                 binding = true; keyLabel.Text = "..."
                 tween(keyBtn, { BackgroundColor3 = Theme.AccentDim }, 0.1)
+                tween(keyStroke, { Color = Theme.Accent }, 0.1)
             end)
             UserInputService.InputBegan:Connect(function(inp, gpe)
                 if binding then
@@ -911,6 +1168,7 @@ function Rift:Tab(config)
                     binding = false
                     keyLabel.Text = tostring(boundKey):gsub("Enum.KeyCode.",""):gsub("Enum.UserInputType.","")
                     tween(keyBtn, { BackgroundColor3 = Theme.Background }, 0.1)
+                    tween(keyStroke, { Color = Theme.Border }, 0.15)
                     self._lib.Flags[flag].Key = boundKey; return
                 end
                 if gpe then return end
@@ -919,12 +1177,18 @@ function Rift:Tab(config)
                     if mode == "Toggle" then
                         active = not active; cb(active)
                         self._lib.Flags[flag].Active = active
-                        tween(keyBtn, { BackgroundColor3 = active and Theme.AccentDim or Theme.Background }, 0.1)
-                        tween(keyLabel, { TextColor3 = active and Theme.White or Theme.Accent }, 0.1)
+                        tween(keyBtn, { BackgroundColor3 = active and Theme.AccentDim or Theme.Background }, 0.12)
+                        tween(keyLabel, { TextColor3 = active and Theme.White or Theme.Accent }, 0.12)
+                        tween(keyStroke, { Color = active and Theme.Accent or Theme.Border }, 0.12)
+                        if active then
+                            local mp = UserInputService:GetMouseLocation()
+                            local kp = keyBtn.AbsolutePosition
+                            ripple(keyBtn, mp.X - kp.X, mp.Y - kp.Y)
+                        end
                     elseif mode == "Hold" then
-                        active = true; cb(true)
-                        self._lib.Flags[flag].Active = true
+                        active = true; cb(true); self._lib.Flags[flag].Active = true
                         tween(keyBtn, { BackgroundColor3 = Theme.AccentDim }, 0.1)
+                        tween(keyStroke, { Color = Theme.Accent }, 0.1)
                     end
                 end
             end)
@@ -934,6 +1198,7 @@ function Rift:Tab(config)
                     if k == boundKey then
                         active = false; cb(false); self._lib.Flags[flag].Active = false
                         tween(keyBtn, { BackgroundColor3 = Theme.Background }, 0.1)
+                        tween(keyStroke, { Color = Theme.Border }, 0.15)
                     end
                 end
             end)
@@ -943,7 +1208,7 @@ function Rift:Tab(config)
             return { Get = function() return active end, GetKey = function() return boundKey end }
         end
 
-        -- LABEL
+        -- ── LABEL ────────────────────────────────────────
         function sec:Label(opts)
             opts = opts or {}
             local text  = opts.Text or opts.text or opts.Name or opts.name or ""
@@ -957,12 +1222,15 @@ function Rift:Tab(config)
             return { Set = function(v) lbl.Text = v end, SetColor = function(v) lbl.TextColor3 = v end }
         end
 
-        -- SEPARATOR
+        -- ── SEPARATOR ────────────────────────────────────
         function sec:Separator()
-            make("Frame", {
+            local sep = make("Frame", {
                 Parent = self._elemHolder, BackgroundColor3 = Theme.Border,
-                Size = UDim2.new(1, -16, 0, 1), BorderSizePixel = 0, ZIndex = 8,
+                Size = UDim2.new(0, 0, 0, 1), BorderSizePixel = 0, ZIndex = 8,
             })
+            task.delay(0.05, function()
+                tween(sep, { Size = UDim2.new(1, -16, 0, 1) }, 0.3, Enum.EasingStyle.Quart)
+            end)
         end
 
         table.insert(tab.Sections, sec)
@@ -972,7 +1240,11 @@ function Rift:Tab(config)
     return tab
 end
 
+-- ════════════════════════════════════════════════
+-- DESTROY
+-- ════════════════════════════════════════════════
 function Rift:Destroy()
+    for _, kill in ipairs(self._loopKills) do pcall(kill) end
     for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
     self.ScreenGui:Destroy()
     lockMouse()
