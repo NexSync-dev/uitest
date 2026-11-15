@@ -1,6 +1,3 @@
-
-
---// services ----------------------------------------------------------------
 local cloneref = cloneref or function(o) return o end
 local function service(name) return cloneref(game:GetService(name)) end
 
@@ -795,8 +792,10 @@ function Isle:_renderDock()
         end
     end
 
+    local had = d.HasEntries
     d.Width = width
     d.HasEntries = #entries > 0
+    if d.HasEntries and not had then self:PeekDock(3) end
     d.Root.Visible = d.HasEntries
     tween(d.Root, { Size = UDim2.fromOffset(width, DOCK_H) }, 0.3)
     if d.HasEntries and d.Shown == false and not Config.DockAutoHide then self:_setDockShown(true) end
@@ -983,7 +982,7 @@ function Isle:CreateWindow(o)
             h.InputBegan:Connect(function(i)
                 if isPress(i) and not win._max then
                     self:_focus(win)
-                    rs = { at = i.Position, size = Vector2.new(holder.Size.X.Offset, holder.Size.Y.Offset), pos = holder.Position }
+                    rs = { at = i.Position, size = Vector2.new(holder.Size.X.Offset, holder.Size.Y.Offset), pos = holder.Position, axis = h }
                     tween(grip1, { BackgroundTransparency = 0.3 }, 0.1)
                     tween(grip2, { BackgroundTransparency = 0.3 }, 0.1)
                 end
@@ -1000,7 +999,6 @@ function Isle:CreateWindow(o)
                     holder.Position = UDim2.new(rs.pos.X.Scale, rs.pos.X.Offset + (nx - rs.size.X) / 2, rs.pos.Y.Scale, rs.pos.Y.Offset + (ny - rs.size.Y) / 2)
                 end
             end)
-            h.InputBegan:Connect(function(i) if isPress(i) and rs then rs.axis = h end end)
             return h
         end
         handle("ResizeRight", UDim2.new(1, -4, 0, 28), UDim2.new(0, 10, 1, -52), true, false)
@@ -1372,7 +1370,7 @@ function Tab:Tabbox(side)
     local content = new("Frame", { Name = "Content", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = box })
     new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Parent = content })
 
-    local tb = setmetatable({ Tab = self, Lib = lib, SegIn = segIn, Content = content, Pages = {}, Wrap = wrap }, Tabbox)
+    local tb = setmetatable({ Owner = self, Lib = lib, SegIn = segIn, Content = content, Pages = {}, Wrap = wrap }, Tabbox)
     lib:_onTheme(function()
         if not box.Parent then return false end
         tb:_style(true)
@@ -1416,7 +1414,7 @@ function Tabbox:Tab(name)
         p.Group.Visible = true
         self:_style(false)
     end
-    p.Section = setmetatable({ Tab = self.Tab, Lib = self.Lib, Group = p.Group, Count = 0, Wrap = self.Wrap }, Section)
+    p.Section = setmetatable({ Tab = self.Owner, Lib = self.Lib, Group = p.Group, Count = 0, Wrap = self.Wrap }, Section)
     return p.Section
 end
 Tabbox.AddTab = Tabbox.Tab
