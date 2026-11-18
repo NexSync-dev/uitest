@@ -1,3 +1,18 @@
+--[[
+    Isle v2  -  a dark, Apple-style UI library for Roblox
+
+    local Isle = loadstring(game:HttpGet("YOUR_RAW_URL"))()
+
+    local win  = Isle:CreateWindow({ Title = "Atlas", Subtitle = "v1.0" })   -- alias: MakeWindow
+    local tab  = win:CreateTab("Main")                                       -- alias: MakeTab
+    local left = tab:Section("Movement", "Left")                             -- or "Right"
+    left:Toggle({ Name = "Sprint", Flag = "sprint", Callback = function(on) end })
+    win:CreateSettings()                                                     -- themes, colours, scale...
+
+    See example.lua for every component.
+]]
+
+--// services ----------------------------------------------------------------
 local cloneref = cloneref or function(o) return o end
 local function service(name) return cloneref(game:GetService(name)) end
 
